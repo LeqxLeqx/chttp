@@ -496,7 +496,11 @@ static void http_reader_read_content(HTTPReader * reader, BufferedReader * br)
       }
     }
     else if (buffer_read < 0)
-      http_reader_check_fd_error(reader);
+    { 
+      if (errno != EAGAIN && errno != EWOULDBLOCK)
+        http_reader_check_fd_error(reader);
+      /* OTHERWISE CONTINUE TO RE-READ */
+    }
     else
     {
       if (content.length == 0)
@@ -571,24 +575,6 @@ static void http_reader_send_continue(HTTPReader * reader, int fd)
   http_reader_send(reader, fd, response);
 }
 
-static void http_reader_send_expectation_failed(HTTPReader * reader, int fd)
-{
-  HTTPResponse * response;
-
-  assert(reader);
-
-  response = http_response_new();
-  http_response_set_status_code(
-    response,
-    HTTP_STATUS_CODE_417_EXPECTATION_FAILED
-    );
-  http_response_set_version(
-    response, 
-    http_message_get_version(reader->message)
-    );
-
-  http_reader_send(reader, fd, response);
-}
 
 static void http_reader_respond_to_expect_continue(
     HTTPReader * reader,
@@ -615,7 +601,7 @@ static void http_reader_respond_to_expect_continue(
   if (!reader->settings.allow_expect_continue)
   {
     reader->error = strings_clone("`Expect: 100-Continue' header not allowed");
-    http_reader_send_expectation_failed(reader, fd);
+    reader->status_code = HTTP_STATUS_CODE_417_EXPECTATION_FAILED;
     return;
   }
   if (!reader->settings.send_continue_callback)

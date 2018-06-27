@@ -29,6 +29,8 @@ bool http_utils_split_about_no_trim(
     char * src, char ** before, char ** after, char c
     );
 
+char * http_utils_headerize(char * header_name);
+
 #endif
 
 

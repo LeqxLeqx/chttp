@@ -8,6 +8,15 @@
 
 #include "http_utils.h"
 
+/* header fields which do not conform with
+ * standard http header field naming convention
+ */
+#define _HTTP_UTILS_A_IM_HEADER "A-IM"
+#define _HTTP_UTILS_TE_HEADER "TE"
+#define _HTTP_UTILS_CONTENT_MD5_HEADER "Content-MD5"
+#define _HTTP_UTILS_ETAG_HEADER "ETag"
+#define _HTTP_UTILS_IM_HEADER "IM"
+#define _HTTP_UTILS_WWW_AUTHENTICATE_HEADER "WWW-Authenticate"
 
 #define HTTP_UTILS_SUNDAY 0
 #define HTTP_UTILS_MONDAY 1
@@ -875,5 +884,61 @@ bool http_utils_split_about(
     )
 {
   return http_utils_split_about_imp(src, before, after, c, true);
+}
+
+static char * http_utils_headerize_common(char * header_name)
+{
+  if (strings_equals_ignore_case(header_name, _HTTP_UTILS_A_IM_HEADER))
+    return strings_clone(_HTTP_UTILS_A_IM_HEADER);
+  else if (strings_equals_ignore_case(header_name, _HTTP_UTILS_TE_HEADER))
+    return strings_clone(_HTTP_UTILS_TE_HEADER);
+  else if (
+    strings_equals_ignore_case( header_name, _HTTP_UTILS_CONTENT_MD5_HEADER)
+    )
+    return strings_clone(_HTTP_UTILS_CONTENT_MD5_HEADER);
+  else if (strings_equals_ignore_case(header_name, _HTTP_UTILS_ETAG_HEADER))
+    return strings_clone(_HTTP_UTILS_ETAG_HEADER);
+  else if (strings_equals_ignore_case(header_name, _HTTP_UTILS_IM_HEADER))
+    return strings_clone(_HTTP_UTILS_IM_HEADER);
+  else if (
+    strings_equals_ignore_case(header_name, _HTTP_UTILS_WWW_AUTHENTICATE_HEADER)
+    )
+    return strings_clone(_HTTP_UTILS_WWW_AUTHENTICATE_HEADER);
+  else
+    return NULL;
+}
+
+char * http_utils_headerize(char * header_name)
+{
+  char * ret, c;
+  bool capitalize;
+  unsigned int length;
+
+  assert(header_name);
+
+  ret = http_utils_headerize_common(header_name);
+  if (ret)
+    return ret;
+
+  length = strings_length(header_name);
+
+  ret = malloc(sizeof(char) * (length + 1));
+  assert(ret);
+
+  ret[length] = 0; /* null terminate */
+
+  capitalize = true;
+  for (unsigned int k = 0; k < length; k++)
+  {
+    c = header_name[k];
+    if (capitalize)
+      ret[k] = chars_to_upper(c);
+    else
+      ret[k] = chars_to_lower(c);
+
+    capitalize = !chars_is_alpha(c);
+  }
+
+  return ret;
 }
 

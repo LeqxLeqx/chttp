@@ -97,9 +97,12 @@ bool http_message_has_header(HTTPMessage * message, char * name)
 
 char * http_message_get_header(HTTPMessage * message, char * name)
 {
-  char * ret;
+  char * ret, * header_name;
+  header_name = http_utils_headerize(name);
 
-  ret = http_message_get_header_imp(message, name);
+  ret = http_message_get_header_imp(message, header_name);
+  free(header_name);
+
   if (ret)
     return strings_clone(ret);
   else
@@ -125,9 +128,13 @@ bool http_message_try_get_header(
 List * http_message_get_headers(HTTPMessage * message, char * name)
 {
   List * ret;
-  char * string;
+  char * string, * header_name;
 
-  string = http_message_get_header_imp(message, name);
+  header_name = http_utils_headerize(name);
+
+  string = http_message_get_header_imp(message, header_name);
+  free(header_name);
+
   if (!string)
     return list_new(LIST_TYPE_LINKED_LIST);
 
@@ -144,13 +151,17 @@ size_t http_message_print_header(
     size_t buffer_length
     )
 {
-  char * str;
+  char * str, * header_name;
   unsigned int str_length;
 
   assert(buffer);
   assert(buffer_length);
 
-  str = http_message_get_header_imp(message, name);
+  header_name = http_utils_headerize(name);
+
+  str = http_message_get_header_imp(message, header_name);
+  free(header_name);
+
   if (!str)
     return 0;
 
@@ -344,19 +355,27 @@ void http_message_set_content_length(HTTPMessage * message, size_t length)
 void http_message_add_header(HTTPMessage * message, char * name, char * value)
 {
   Any current;
-  char * temp;
+  char * temp, * header_name;
 
   assert(message);
   assert(name);
   assert(value);
 
-  if (dictionary_try_get(message->headers, name, &current))
+  header_name = http_utils_headerize(name);
+
+  if (dictionary_try_get(message->headers, header_name, &current))
   {
     temp = strings_format("%s,%s", any_to_str(current), value);
-    dictionary_set_and_free(message->headers, name, str_to_any(temp));
+    dictionary_set_and_free(message->headers, header_name, str_to_any(temp));
   }
   else
-    dictionary_put(message->headers, name, str_to_any(strings_clone(value)));
+    dictionary_put(
+      message->headers,
+      header_name,
+      str_to_any(strings_clone(value))
+      );
+
+  free(header_name);
 }
 
 void http_message_append_to_header(
@@ -365,15 +384,19 @@ void http_message_append_to_header(
     char * value
     )
 {
-  char * current, * temp;
+  char * current, * temp, * header_name;
 
   assert(message);
   assert(name);
   assert(value);
 
-  current = any_to_str(dictionary_get(message->headers, name));
+  header_name = http_utils_headerize(name);
+
+  current = any_to_str(dictionary_get(message->headers, header_name));
   temp = strings_concat(current, value);
-  dictionary_set_and_free(message->headers, name, str_to_any(temp));
+  dictionary_set_and_free(message->headers, header_name, str_to_any(temp));
+
+  free(header_name);
 }
 
 
