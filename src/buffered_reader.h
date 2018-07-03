@@ -2,6 +2,7 @@
 #ifndef __CHTTP_BUFFERED_READER_H
 #define __CHTTP_BUFFERED_READER_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
 
@@ -21,6 +22,8 @@ typedef struct BufferedReader BufferedReader;
 
 BufferedReader * buffered_reader_new(int fd);
 void buffered_reader_destroy(BufferedReader * reader);
+
+bool buffered_reader_buffer_is_empty(BufferedReader * reader);
 
 ssize_t buffered_reader_read(
     BufferedReader * reader,

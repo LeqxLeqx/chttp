@@ -4,7 +4,8 @@
 #define __CHTTP_H
 
 
-#define CHTTP_VERSION "0.2.0"
+#define CHTTP_VERSION_INTEGER 3030
+#define CHTTP_VERSION "0.3.3"
 
 
 #include "http_content.h"

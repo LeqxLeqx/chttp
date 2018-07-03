@@ -28,8 +28,9 @@ struct HTTPReader
   HTTPReaderSettings settings;
 
   char * error;
-  int error_number;
+  int error_number, output_fd;
   HTTPStatusCode status_code;
+  BufferedReader * br;
 
   HTTPMessage * message;
   char * last_parsed_header;
@@ -98,7 +99,6 @@ static void http_reader_check_fd_error(HTTPReader * reader)
 
 static char * http_reader_read_line(
     HTTPReader * reader,
-    BufferedReader * br,
     uint16_t max
     )
 {
@@ -109,7 +109,7 @@ static char * http_reader_read_line(
     return NULL;
   
   error = buffered_reader_read_line(
-    br, max, &ret,
+    reader->br, max, &ret,
     http_reader_remaining_header_read_time(reader)
     );
   switch (error)
@@ -148,7 +148,7 @@ static char * http_reader_read_line(
 }
 
 static HTTPMessage * http_reader_parse_status_line(
-    HTTPReader * reader, BufferedReader * br, char * line
+    HTTPReader * reader, char * line
     )
 {
   HTTPResponse * ret;
@@ -202,7 +202,7 @@ static HTTPMessage * http_reader_parse_status_line(
 }
 
 static HTTPMessage * http_reader_parse_request_line(
-    HTTPReader * reader, BufferedReader * br, char * line
+    HTTPReader * reader, char * line
     )
 {
   HTTPRequest * ret;
@@ -254,7 +254,7 @@ static HTTPMessage * http_reader_parse_request_line(
 
 
 static void http_reader_parse_start_line(
-    HTTPReader * reader, BufferedReader * br
+    HTTPReader * reader
     )
 {
   HTTPMessage * msg;
@@ -262,18 +262,15 @@ static void http_reader_parse_start_line(
  
   reader->parsing_first_line = true;
   
-  line = http_reader_read_line(
-      reader, br, 
-      reader->settings.start_line_max_length
-      );
+  line = http_reader_read_line(reader, reader->settings.start_line_max_length);
       
   if (!line)
     return;
   
   if (strings_starts_with(line, "HTTP/"))
-    msg = http_reader_parse_status_line(reader, br, line);
+    msg = http_reader_parse_status_line(reader, line);
   else
-    msg = http_reader_parse_request_line(reader, br, line);
+    msg = http_reader_parse_request_line(reader, line);
   
   reader->parsing_first_line = false;
 
@@ -386,7 +383,7 @@ static void http_reader_parse_header(HTTPReader * reader, char * line)
 }
 
 
-static void http_reader_parse_headers(HTTPReader * reader, BufferedReader * br)
+static void http_reader_parse_headers(HTTPReader * reader)
 {
   char * line = NULL;
 
@@ -394,7 +391,7 @@ static void http_reader_parse_headers(HTTPReader * reader, BufferedReader * br)
   {
     free(line);
     line = http_reader_read_line(
-        reader, br,
+        reader,
         reader->settings.header_max_line_length
         );
     if (!line || line[0] == '\0')
@@ -444,7 +441,7 @@ static bool http_reader_can_presume_empty_by_method(HTTPReader * reader)
 
 }
 
-static void http_reader_read_content(HTTPReader * reader, BufferedReader * br)
+static void http_reader_read_content(HTTPReader * reader)
 {
   ssize_t stated_content_length, buffer_read;
   char buffer [_HTTP_READER_BUFFER_LENGTH];
@@ -485,7 +482,7 @@ static void http_reader_read_content(HTTPReader * reader, BufferedReader * br)
       if (read_attempt > _HTTP_READER_BUFFER_LENGTH)
         read_attempt = _HTTP_READER_BUFFER_LENGTH;
     }
-    buffer_read = buffered_reader_read(br, buffer, read_attempt);
+    buffer_read = buffered_reader_read(reader->br, buffer, read_attempt);
     if (buffer_read == 0) /* INTERPRET AS EOF */
     {
       if (stated_content_length != -1 &&
@@ -537,7 +534,6 @@ static void http_reader_read_content(HTTPReader * reader, BufferedReader * br)
 
 static void http_reader_send(
     HTTPReader * reader,
-    int fd,
     HTTPResponse * response
     )
 {
@@ -547,7 +543,7 @@ static void http_reader_send(
   assert(response);
 
   writer = http_writer_new();
-  http_writer_render(writer, (HTTPMessage *) response, fd);
+  http_writer_render(writer, (HTTPMessage *) response, reader->output_fd);
 
   if (http_writer_has_error(writer))
   {
@@ -559,7 +555,7 @@ static void http_reader_send(
   http_response_destroy(response);
 }
 
-static void http_reader_send_continue(HTTPReader * reader, int fd)
+static void http_reader_send_continue(HTTPReader * reader)
 {
   HTTPResponse * response;
 
@@ -572,14 +568,11 @@ static void http_reader_send_continue(HTTPReader * reader, int fd)
     http_message_get_version(reader->message)
     );
 
-  http_reader_send(reader, fd, response);
+  http_reader_send(reader, response);
 }
 
 
-static void http_reader_respond_to_expect_continue(
-    HTTPReader * reader,
-    int fd
-    )
+static void http_reader_respond_to_expect_continue(HTTPReader * reader)
 {
   char * expect;
   HTTPResponse * response;
@@ -606,7 +599,7 @@ static void http_reader_respond_to_expect_continue(
   }
   if (!reader->settings.send_continue_callback)
   {
-    http_reader_send_continue(reader, fd);
+    http_reader_send_continue(reader);
     return;
   }
 
@@ -614,22 +607,25 @@ static void http_reader_respond_to_expect_continue(
       (HTTPRequest *) reader->message
       );
   if (!response)
-    http_reader_send_continue(reader, fd);
+    http_reader_send_continue(reader);
   else
   {
     reader->error = strings_clone("`Expect: 100-Continue' rejected");
-    http_reader_send(reader, fd, response);
+    http_reader_send(reader, response);
   }
 }
 
 
-HTTPReader * http_reader_new()
+HTTPReader * http_reader_new(int fd)
 {
   HTTPReader * ret = (HTTPReader *) malloc(sizeof(HTTPReader));
   assert(ret);
 
+  ret->br = buffered_reader_new(fd);
+
   ret->error = NULL;
   ret->error_number = 0;
+  ret->output_fd = fd;
   ret->status_code = 0;
 
   ret->message = NULL;
@@ -674,6 +670,8 @@ void http_reader_destroy(HTTPReader * reader)
   free(reader->error);
   free(reader->last_parsed_header);
 
+  buffered_reader_destroy(reader->br);
+
   free(reader);
 }
 
@@ -706,6 +704,11 @@ HTTPStatusCode http_reader_get_status_code(HTTPReader * reader)
   assert(reader);
   return reader->status_code;
 }
+bool http_reader_buffer_is_empty(HTTPReader * reader)
+{
+  assert(reader);
+  return buffered_reader_buffer_is_empty(reader->br);
+}
 
 void http_reader_clear_error(HTTPReader * reader)
 {
@@ -718,22 +721,19 @@ void http_reader_clear_error(HTTPReader * reader)
 }
 
 
-HTTPMessage * http_reader_parse(HTTPReader * reader, int fd)
+HTTPMessage * http_reader_next(HTTPReader * reader)
 {
   HTTPMessage * ret;
-  BufferedReader * br;
   assert(reader);
 
   http_reader_reset(reader);
 
-  br = buffered_reader_new(fd);
-
   reader->header_start_time = time(NULL);
-  http_reader_parse_start_line(reader, br);
+  http_reader_parse_start_line(reader);
   if (reader->error)
     return NULL;
 
-  http_reader_parse_headers(reader, br);
+  http_reader_parse_headers(reader);
   if (reader->error)
   {
     http_message_destroy(reader->message);
@@ -741,7 +741,7 @@ HTTPMessage * http_reader_parse(HTTPReader * reader, int fd)
     return NULL;
   }
 
-  http_reader_respond_to_expect_continue(reader, fd);
+  http_reader_respond_to_expect_continue(reader);
   if (reader->error)
   {
     http_message_destroy(reader->message);
@@ -750,7 +750,7 @@ HTTPMessage * http_reader_parse(HTTPReader * reader, int fd)
   }
 
   reader->content_start_time = time(NULL);
-  http_reader_read_content(reader, br);
+  http_reader_read_content(reader);
 
   if (reader->error)
   {

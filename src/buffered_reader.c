@@ -57,9 +57,16 @@ void buffered_reader_destroy(BufferedReader * reader)
 {
   assert(reader);
 
-  free(reader->data);
   free(reader);
 }
+
+bool buffered_reader_buffer_is_empty(BufferedReader * reader)
+{
+  assert(reader);
+
+  return reader->data_length == 0;
+}
+
 
 ssize_t buffered_reader_read(
     BufferedReader * reader,
