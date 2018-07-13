@@ -31,6 +31,7 @@ struct HTTPReader
   int error_number, output_fd;
   HTTPStatusCode status_code;
   BufferedReader * br;
+  bool expect_head_only;
 
   HTTPMessage * message;
   char * last_parsed_header;
@@ -441,7 +442,7 @@ static bool http_reader_can_presume_empty_by_method(HTTPReader * reader)
 
 }
 
-static void http_reader_read_content(HTTPReader * reader)
+static void http_reader_read_content(HTTPReader * reader, bool static_source)
 {
   ssize_t stated_content_length, buffer_read;
   char buffer [_HTTP_READER_BUFFER_LENGTH];
@@ -451,7 +452,10 @@ static void http_reader_read_content(HTTPReader * reader)
   content.data = NULL;
   content.length = 0;
 
-  stated_content_length = http_message_get_content_length(reader->message);
+  if (reader->expect_head_only)
+    stated_content_length = 0;
+  else
+    stated_content_length = http_message_get_content_length(reader->message);
   if (stated_content_length == -1)
   {
     if (http_reader_can_presume_empty_by_method(reader))
@@ -494,9 +498,13 @@ static void http_reader_read_content(HTTPReader * reader)
     }
     else if (buffer_read < 0)
     { 
-      if (errno != EAGAIN && errno != EWOULDBLOCK)
-        http_reader_check_fd_error(reader);
-      /* OTHERWISE CONTINUE TO RE-READ */
+      if (errno == EAGAIN || errno == EWOULDBLOCK)
+      {
+        if (!static_source)
+          buffer_read = 0; /* ensure read continues */
+        continue;
+      }
+      http_reader_check_fd_error(reader);
     }
     else
     {
@@ -627,6 +635,7 @@ HTTPReader * http_reader_new(int fd)
   ret->error_number = 0;
   ret->output_fd = fd;
   ret->status_code = 0;
+  ret->expect_head_only = false;
 
   ret->message = NULL;
   ret->parsing_first_line = true;
@@ -681,6 +690,12 @@ void http_reader_set_settings(HTTPReader * reader, HTTPReaderSettings settings)
 
   reader->settings = settings;
 }
+void http_reader_set_expect_head_only(HTTPReader * reader, bool value)
+{
+  assert(reader);
+
+  reader->expect_head_only = value;
+}
 
 bool http_reader_has_error(HTTPReader * reader)
 {
@@ -721,7 +736,10 @@ void http_reader_clear_error(HTTPReader * reader)
 }
 
 
-HTTPMessage * http_reader_next(HTTPReader * reader)
+static HTTPMessage * http_reader_next_imp(
+    HTTPReader * reader, 
+    bool static_source
+    )
 {
   HTTPMessage * ret;
   assert(reader);
@@ -741,16 +759,19 @@ HTTPMessage * http_reader_next(HTTPReader * reader)
     return NULL;
   }
 
-  http_reader_respond_to_expect_continue(reader);
-  if (reader->error)
+  if (!static_source)
   {
-    http_message_destroy(reader->message);
-    reader->message = NULL;
-    return NULL;
+    http_reader_respond_to_expect_continue(reader);
+    if (reader->error)
+    {
+      http_message_destroy(reader->message);
+      reader->message = NULL;
+      return NULL;
+    }
   }
 
   reader->content_start_time = time(NULL);
-  http_reader_read_content(reader);
+  http_reader_read_content(reader, static_source);
 
   if (reader->error)
   {
@@ -762,6 +783,16 @@ HTTPMessage * http_reader_next(HTTPReader * reader)
   ret = reader->message;
   reader->message = NULL;
   return ret;
+}
+
+HTTPMessage * http_reader_next(HTTPReader * reader)
+{
+  return http_reader_next_imp(reader, false);
+}
+
+HTTPMessage * http_reader_next_from_static(HTTPReader * reader)
+{
+  return http_reader_next_imp(reader, true);
 }
 
 

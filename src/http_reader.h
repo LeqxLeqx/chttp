@@ -17,6 +17,7 @@ HTTPReader * http_reader_new(int fd);
 void http_reader_destroy(HTTPReader * reader);
 
 void http_reader_set_settings(HTTPReader * reader, HTTPReaderSettings settings);
+void http_reader_set_expect_head_only(HTTPReader * reader, bool value);
 
 bool http_reader_has_error(HTTPReader * reader);
 char * http_reader_get_error(HTTPReader * reader);
