@@ -456,7 +456,7 @@ static void http_reader_read_content(HTTPReader * reader, bool static_source)
     stated_content_length = 0;
   else
     stated_content_length = http_message_get_content_length(reader->message);
-  if (stated_content_length == -1)
+  if (stated_content_length == -1 && !static_source)
   {
     if (http_reader_can_presume_empty_by_method(reader))
       stated_content_length = 0;

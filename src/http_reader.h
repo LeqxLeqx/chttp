@@ -28,6 +28,7 @@ bool http_reader_buffer_is_empty(HTTPReader * reader);
 void http_reader_clear_error(HTTPReader * reader);
 
 HTTPMessage * http_reader_next(HTTPReader * reader);
+HTTPMessage * http_reader_next_from_static(HTTPReader * reader);
 
 
 #endif
