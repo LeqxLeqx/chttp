@@ -301,8 +301,12 @@ void http_writer_clear_error(HTTPWriter * writer)
 
 void http_writer_render(HTTPWriter * writer, HTTPMessage * msg, int fd)
 {
-  HTTPContent content;
+  http_writer_render_header(writer, msg, fd);
+  http_writer_render_content(writer, msg, fd);
+}
 
+void http_writer_render_header(HTTPWriter * writer, HTTPMessage * msg, int fd)
+{
   assert(writer);
   assert(msg);
   assert(fd >= 0);
@@ -318,13 +322,21 @@ void http_writer_render(HTTPWriter * writer, HTTPMessage * msg, int fd)
   http_writer_render_cookies(writer, msg, fd);
 
   http_writer_render_crlf(writer, fd);
-  
+}
+
+void http_writer_render_content(HTTPWriter * writer, HTTPMessage * msg, int fd)
+{
+  HTTPContent content;
+
+  assert(writer);
+  assert(msg);
+  assert(fd >= 0);
+
   content = http_message_get_content(msg);
   if (content.length != 0)
   {
     http_writer_write(writer, fd, content.data, content.length);
   }
-
 }
 
 

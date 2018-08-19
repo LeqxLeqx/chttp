@@ -500,8 +500,7 @@ static void http_reader_read_content(HTTPReader * reader, bool static_source)
     { 
       if (errno == EAGAIN || errno == EWOULDBLOCK)
       {
-        if (!static_source)
-          buffer_read = 0; /* ensure read continues */
+        buffer_read = 1; /* ensure read continues */
         continue;
       }
       http_reader_check_fd_error(reader);

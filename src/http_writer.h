@@ -23,6 +23,8 @@ int http_writer_get_errno(HTTPWriter * writer);
 void http_writer_clear_error(HTTPWriter * writer);
 
 void http_writer_render(HTTPWriter * writer, HTTPMessage * msg, int fd);
+void http_writer_render_header(HTTPWriter * writer, HTTPMessage * msg, int fd);
+void http_writer_render_content(HTTPWriter * writer, HTTPMessage * msg, int fd);
 
 
 #endif
